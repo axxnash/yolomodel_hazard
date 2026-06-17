@@ -1,0 +1,68 @@
+# =========================
+# Java / Spring Boot
+# =========================
+target/
+*.class
+
+# Maven wrapper jar should usually be kept
+!.mvn/wrapper/maven-wrapper.jar
+
+# IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# VS Code
+.vscode/
+
+# Eclipse / STS
+.apt_generated/
+.classpath
+.factorypath
+.project
+.settings/
+.springBeans
+.sts4-cache
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+
+# =========================
+# Python / YOLO Service
+# =========================
+__pycache__/
+*.pyc
+.venv/
+env/
+.ipynb_checkpoints/
+
+# =========================
+# Dataset / Raw Images
+# Do not upload dataset to GitHub
+# =========================
+dataset/
+raw_images/
+*.jpg
+*.jpeg
+*.png
+*.mp4
+*.avi
+*.webp
+
+# =========================
+# Environment / Secrets
+# =========================
+.env
+application-secret.properties
+
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db

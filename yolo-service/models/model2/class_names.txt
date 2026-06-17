@@ -1,0 +1,5 @@
+broken_sink
+broken_toilet_door
+broken_toilet_seat
+overflowing_sink
+overflowing_toilet

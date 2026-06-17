@@ -1,0 +1,11 @@
+path: ./dataset
+train: train/images
+val: valid/images
+test: test/images
+
+names:
+  0: broken_sink
+  1: broken_toilet_door
+  2: broken_toilet_seat
+  3: overflowing_sink
+  4: overflowing_toilet
