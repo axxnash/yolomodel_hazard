@@ -1,0 +1,5 @@
+0 blocked_drain
+1 broken_floor_tile
+2 missing_drain_cover
+3 water_leakage
+4 wet_slippery_floor

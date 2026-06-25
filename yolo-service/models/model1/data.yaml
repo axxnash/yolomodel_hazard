@@ -1,0 +1,16 @@
+names:
+- blocked_drain
+- broken_floor_tile
+- missing_drain_cover
+- water_leakage
+- wet_slippery_floor
+nc: 5
+roboflow:
+  license: CC BY 4.0
+  project: model1-n4ppm
+  url: https://universe.roboflow.com/abinashs-workspace-fmce1/model1-n4ppm/dataset/1
+  version: 1
+  workspace: abinashs-workspace-fmce1
+test: ../test/images
+train: ../train/images
+val: ../valid/images
