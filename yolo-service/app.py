@@ -12,6 +12,11 @@ BASE_DIR = Path(__file__).resolve().parent
 MODEL_CONFIGS = {
     # Add model1/model3 here after their best.pt and class_names.txt files are ready.
     # Keep model2 unchanged unless its files move or are retrained.
+     "model1": {
+        "weights": BASE_DIR / "models" / "model1" / "best.pt",
+        "class_names": BASE_DIR / "models" / "model1" / "class_names.txt",
+    },
+    
     "model2": {
         "weights": BASE_DIR / "models" / "model2" / "best.pt",
         "class_names": BASE_DIR / "models" / "model2" / "class_names.txt",
