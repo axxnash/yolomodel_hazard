@@ -21,6 +21,16 @@ MODEL_CONFIGS = {
     "model2": {
         "weights": BASE_DIR / "models" / "model2" / "best.pt",
         "class_names": BASE_DIR / "models" / "model2" / "class_names.txt",
+    },
+
+    "model3": {
+        "weights": BASE_DIR / "models" / "model3" / "best.pt",
+        "class_names": BASE_DIR / "models" / "model3" / "class_names.txt",
+    },
+
+    "model4": {
+        "weights": BASE_DIR / "models" / "model4" / "best.pt",
+        "class_names": BASE_DIR / "models" / "model4" / "class_names.txt",
     }
     
 }
