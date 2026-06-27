@@ -22,6 +22,7 @@ MODEL_CONFIGS = {
         "weights": BASE_DIR / "models" / "model2" / "best.pt",
         "class_names": BASE_DIR / "models" / "model2" / "class_names.txt",
     }
+    
 }
 
 app = FastAPI(title="Campus Hazard YOLO Service")
