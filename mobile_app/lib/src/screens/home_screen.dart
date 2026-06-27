@@ -35,10 +35,10 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  Future<void> _pickImage() async {
+  Future<void> _pickImage(ImageSource source) async {
     final pickedFile = await _imagePicker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 75,
+      source: source,
+      imageQuality: 85,
       maxWidth: 1280,
       maxHeight: 1280,
     );
@@ -55,6 +55,72 @@ class _HomeScreenState extends State<HomeScreen> {
       _selectedImageBytes = imageBytes;
       _selectedImageSize = imageSize;
       _response = null;
+      _errorMessage = null;
+    });
+  }
+
+  Future<void> _showImageSourceSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF121127),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Choose image source',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: 16),
+                _SourceOptionTile(
+                  icon: Icons.photo_library_outlined,
+                  title: 'Gallery',
+                  subtitle: 'Pick an existing hazard image',
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    await _pickImage(ImageSource.gallery);
+                  },
+                ),
+                const SizedBox(height: 10),
+                _SourceOptionTile(
+                  icon: Icons.photo_camera_outlined,
+                  title: 'Camera',
+                  subtitle: 'Take a new toilet hazard photo',
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    await _pickImage(ImageSource.camera);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _resetSelection() {
+    setState(() {
+      _selectedImage = null;
+      _selectedImageBytes = null;
+      _selectedImageSize = null;
+      _response = null;
+      _errorMessage = null;
+    });
+  }
+
+  void _setBaseUrl(String value) {
+    setState(() {
+      _baseUrlController.text = value;
       _errorMessage = null;
     });
   }
@@ -101,7 +167,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       setState(() {
-        _errorMessage = error.toString();
+        _errorMessage = error.toString().replaceFirst('Exception: ', '');
       });
     } finally {
       if (mounted) {
@@ -114,6 +180,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final overlayDetections = _bestOverlayDetections(_response);
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(),
@@ -123,33 +191,45 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             const _AmbientBackdrop(),
             SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _HeroPanel(baseUrlController: _baseUrlController),
-                    const SizedBox(height: 18),
-                    _ImagePickerCard(
-                      selectedImageBytes: _selectedImageBytes,
-                      selectedImageSize: _selectedImageSize,
-                      detections: _response?.detections ?? const [],
-                      isUploading: _isUploading,
-                      onPickImage: _pickImage,
-                      onUploadImage: _uploadImage,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isCompact = constraints.maxWidth < 900;
+
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _HeroPanel(
+                          baseUrlController: _baseUrlController,
+                          isCompact: isCompact,
+                          onQuickUrlSelected: _setBaseUrl,
+                        ),
+                        const SizedBox(height: 18),
+                        _ImagePickerCard(
+                          selectedImage: _selectedImage,
+                          selectedImageBytes: _selectedImageBytes,
+                          selectedImageSize: _selectedImageSize,
+                          detections: overlayDetections,
+                          isUploading: _isUploading,
+                          onChooseImage: _showImageSourceSheet,
+                          onUploadImage: _uploadImage,
+                          onReset: _resetSelection,
+                        ),
+                        if (_errorMessage != null) ...[
+                          const SizedBox(height: 18),
+                          _ErrorCard(message: _errorMessage!),
+                        ],
+                        if (_response != null) ...[
+                          const SizedBox(height: 18),
+                          _SummaryCard(response: _response!),
+                          const SizedBox(height: 18),
+                          _DetectionListCard(detections: _response!.detections),
+                        ],
+                      ],
                     ),
-                    if (_errorMessage != null) ...[
-                      const SizedBox(height: 18),
-                      _ErrorCard(message: _errorMessage!),
-                    ],
-                    if (_response != null) ...[
-                      const SizedBox(height: 18),
-                      _SummaryCard(response: _response!),
-                      const SizedBox(height: 18),
-                      _DetectionListCard(detections: _response!.detections),
-                    ],
-                  ],
-                ),
+                  );
+                },
               ),
             ),
           ],
@@ -159,20 +239,186 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+List<DetectionResult> _bestOverlayDetections(HazardResponse? response) {
+  if (response == null) {
+    return const [];
+  }
+
+  final finalHazard = _normalizeHazardKey(response.finalHazard);
+  if (finalHazard.isEmpty || finalHazard == 'none') {
+    return const [];
+  }
+
+  final matchingDetections = response.detections
+      .where(
+        (detection) => _normalizeHazardKey(detection.label) == finalHazard,
+      )
+      .toList();
+
+  if (matchingDetections.isEmpty) {
+    return const [];
+  }
+
+  matchingDetections.sort((a, b) => b.confidence.compareTo(a.confidence));
+  final overlayDetections = <DetectionResult>[matchingDetections.first];
+
+  final overlapLabel = _knownOverlapPairs[finalHazard];
+  if (overlapLabel == null) {
+    return overlayDetections;
+  }
+
+  final overlapDetections = response.detections
+      .where(
+        (detection) => _normalizeHazardKey(detection.label) == overlapLabel,
+      )
+      .toList();
+
+  if (overlapDetections.isEmpty) {
+    return overlayDetections;
+  }
+
+  overlapDetections.sort((a, b) => b.confidence.compareTo(a.confidence));
+  overlayDetections.add(overlapDetections.first);
+  return overlayDetections;
+}
+
+const Map<String, String> _knownOverlapPairs = {
+  'wet_slippery_floor': 'overflowing_sink',
+  'overflowing_sink': 'wet_slippery_floor',
+  'ceilingwaterstain': 'mold_damp_wall',
+  'mold_damp_wall': 'ceilingwaterstain',
+};
+
 class _HeroPanel extends StatelessWidget {
-  const _HeroPanel({required this.baseUrlController});
+  const _HeroPanel({
+    required this.baseUrlController,
+    required this.isCompact,
+    required this.onQuickUrlSelected,
+  });
 
   final TextEditingController baseUrlController;
+  final bool isCompact;
+  final ValueChanged<String> onQuickUrlSelected;
 
   @override
   Widget build(BuildContext context) {
+    final titleSize = isCompact ? 46.0 : 72.0;
+
+    final introCard = _GlassPanel(
+      padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            height: 58,
+            width: 58,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              gradient: const LinearGradient(
+                colors: [
+                  Color(0xFF786CFF),
+                  Color(0xFF35D6C8),
+                ],
+              ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x44786CFF),
+                  blurRadius: 26,
+                  offset: Offset(0, 10),
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.shield_rounded,
+              color: Colors.white,
+              size: 30,
+            ),
+          ),
+          const SizedBox(height: 18),
+          Text(
+            'Campus Hazard Detector',
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.7,
+                ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Capture or upload a toilet hazard image, send it to the Spring Boot backend, and review the final hazard, severity, recommendation, and all model detections in one place.',
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: const Color(0xB8FFFFFF),
+                  height: 1.5,
+                ),
+          ),
+          const SizedBox(height: 18),
+          const Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _InfoPill(label: 'Camera + Gallery'),
+              _InfoPill(label: 'Bounding Boxes'),
+              _InfoPill(label: 'Meta-ready Response'),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    final endpointCard = _GlassPanel(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Backend URL',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: baseUrlController,
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(
+              hintText: 'http://localhost:8080',
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'The app calls POST /api/hazard/detect and shows final hazard, confidence, severity, recommendation, and per-model detections.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: const Color(0xB8FFFFFF),
+                  height: 1.45,
+                ),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _QuickUrlChip(
+                label: 'Android Emulator',
+                value: 'http://10.0.2.2:8080',
+                onSelected: onQuickUrlSelected,
+              ),
+              _QuickUrlChip(
+                label: 'Web/Desktop',
+                value: 'http://localhost:8080',
+                onSelected: onQuickUrlSelected,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'HAZARD APP',
           style: GoogleFonts.spaceGrotesk(
-            fontSize: 72,
+            fontSize: titleSize,
             fontWeight: FontWeight.w700,
             letterSpacing: 1.2,
             height: 0.92,
@@ -180,107 +426,23 @@ class _HeroPanel extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              flex: 6,
-              child: _GlassPanel(
-                padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      height: 58,
-                      width: 58,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(18),
-                        gradient: const LinearGradient(
-                          colors: [
-                            Color(0xFF786CFF),
-                            Color(0xFF35D6C8),
-                          ],
-                        ),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x44786CFF),
-                            blurRadius: 26,
-                            offset: Offset(0, 10),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.shield_rounded,
-                        color: Colors.white,
-                        size: 30,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Text(
-                      'Campus Hazard Detector',
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -0.7,
-                          ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Upload one image, review the detected hazard, and present the final severity and recommended action in a polished demo screen.',
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            color: const Color(0xB8FFFFFF),
-                            height: 1.5,
-                          ),
-                    ),
-                    const SizedBox(height: 18),
-                    const Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        _InfoPill(label: 'Web + Android'),
-                        _InfoPill(label: 'Bounding Boxes'),
-                        _InfoPill(label: 'Multi-model Ready'),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              flex: 4,
-              child: _GlassPanel(
-                padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Backend URL',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: baseUrlController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        hintText: 'http://localhost:8080',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Use localhost for web, 10.0.2.2 for the emulator, and your laptop IP for a real phone.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: const Color(0xB8FFFFFF),
-                            height: 1.45,
-                          ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+        if (isCompact)
+          Column(
+            children: [
+              introCard,
+              const SizedBox(height: 16),
+              endpointCard,
+            ],
+          )
+        else
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(flex: 6, child: introCard),
+              const SizedBox(width: 16),
+              Expanded(flex: 4, child: endpointCard),
+            ],
+          ),
       ],
     );
   }
@@ -288,20 +450,24 @@ class _HeroPanel extends StatelessWidget {
 
 class _ImagePickerCard extends StatelessWidget {
   const _ImagePickerCard({
+    required this.selectedImage,
     required this.selectedImageBytes,
     required this.selectedImageSize,
     required this.detections,
     required this.isUploading,
-    required this.onPickImage,
+    required this.onChooseImage,
     required this.onUploadImage,
+    required this.onReset,
   });
 
+  final XFile? selectedImage;
   final Uint8List? selectedImageBytes;
   final Size? selectedImageSize;
   final List<DetectionResult> detections;
   final bool isUploading;
-  final VoidCallback onPickImage;
+  final VoidCallback onChooseImage;
   final VoidCallback onUploadImage;
+  final VoidCallback onReset;
 
   @override
   Widget build(BuildContext context) {
@@ -319,12 +485,23 @@ class _ImagePickerCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Choose a maintenance or safety photo, then run detection to draw boxes on the image.',
+            'Choose a maintenance or safety photo, then run detection to draw boxes and return the final hazard decision from your backend.',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: const Color(0xB8FFFFFF),
                   height: 1.45,
                 ),
           ),
+          if (selectedImage != null) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _MiniPill(label: selectedImage!.name),
+                _MiniPill(label: '${detections.length} detections'),
+              ],
+            ),
+          ],
           const SizedBox(height: 18),
           ClipRRect(
             borderRadius: BorderRadius.circular(24),
@@ -371,7 +548,7 @@ class _ImagePickerCard extends StatelessWidget {
                         ),
                         Center(
                           child: Container(
-                            width: 240,
+                            width: 250,
                             padding: const EdgeInsets.all(22),
                             decoration: BoxDecoration(
                               color: Colors.white.withValues(alpha: 0.06),
@@ -388,7 +565,7 @@ class _ImagePickerCard extends StatelessWidget {
                                 ),
                                 SizedBox(height: 12),
                                 Text(
-                                  'No image selected yet.\nChoose a hazard photo from your gallery.',
+                                  'No image selected yet.\nChoose a hazard photo from your gallery or camera.',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.white,
@@ -410,16 +587,19 @@ class _ImagePickerCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          Row(
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
             children: [
-              Expanded(
+              SizedBox(
+                width: 180,
                 child: OutlinedButton(
-                  onPressed: isUploading ? null : onPickImage,
+                  onPressed: isUploading ? null : onChooseImage,
                   child: const Text('Choose Image'),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
+              SizedBox(
+                width: 180,
                 child: FilledButton(
                   onPressed: isUploading ? null : onUploadImage,
                   child: isUploading
@@ -441,13 +621,20 @@ class _ImagePickerCard extends StatelessWidget {
                       : const Text('Detect Hazard'),
                 ),
               ),
+              SizedBox(
+                width: 180,
+                child: OutlinedButton(
+                  onPressed: isUploading ? null : onReset,
+                  child: const Text('Clear'),
+                ),
+              ),
             ],
           ),
           if (selectedImageBytes != null) ...[
             const SizedBox(height: 12),
             Text(
               detections.isEmpty
-                  ? 'Run detection to generate the hazard result and bounding boxes.'
+                  ? 'Run detection to generate the final result and bounding boxes.'
                   : 'Detection overlay updated on the image preview.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: const Color(0x99FFFFFF),
@@ -499,6 +686,9 @@ class _SummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hazardTitle = _prettifyLabel(response.finalHazard);
+    final noHazard = response.finalHazard.toLowerCase() == 'none';
+
     return _GlassPanel(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
       child: Column(
@@ -518,16 +708,52 @@ class _SummaryCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: noHazard
+                    ? const [Color(0x2235D6C8), Color(0x2214A38E)]
+                    : const [Color(0x226D63FF), Color(0x2235D6C8)],
+              ),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: const Color(0x22FFFFFF)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Final hazard',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFFAAB9FF),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  hazardTitle,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
           Wrap(
             spacing: 12,
             runSpacing: 12,
             children: [
-              _MetricChip(label: 'Hazard', value: response.finalHazard),
               _MetricChip(
                 label: 'Confidence',
                 value: '${(response.confidence * 100).toStringAsFixed(1)}%',
               ),
               _MetricChip(label: 'Severity', value: response.severity),
+              _MetricChip(
+                label: 'Detections',
+                value: '${response.detections.length}',
+              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -578,6 +804,9 @@ class _DetectionListCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sortedDetections = [...detections]
+      ..sort((a, b) => b.confidence.compareTo(a.confidence));
+
     return _GlassPanel(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
       child: Column(
@@ -591,17 +820,17 @@ class _DetectionListCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Each card comes from the backend detection list, so future models can be added without changing this screen.',
+            'These cards come directly from the backend detection list, including the YOLO models and any future meta-classifier-ready output.',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: const Color(0xB8FFFFFF),
                   height: 1.35,
                 ),
           ),
           const SizedBox(height: 16),
-          if (detections.isEmpty)
+          if (sortedDetections.isEmpty)
             const Text('No hazard detected for this image.')
           else
-            ...detections.map(
+            ...sortedDetections.map(
               (detection) => Padding(
                 padding: const EdgeInsets.only(bottom: 14),
                 child: Container(
@@ -624,7 +853,7 @@ class _DetectionListCard extends StatelessWidget {
                         children: [
                           Expanded(
                             child: Text(
-                              detection.label,
+                              _prettifyLabel(detection.label),
                               style: const TextStyle(
                                 fontWeight: FontWeight.w800,
                                 fontSize: 17,
@@ -896,6 +1125,107 @@ class _MetricChip extends StatelessWidget {
   }
 }
 
+class _QuickUrlChip extends StatelessWidget {
+  const _QuickUrlChip({
+    required this.label,
+    required this.value,
+    required this.onSelected,
+  });
+
+  final String label;
+  final String value;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => onSelected(value),
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: const Color(0x22FFFFFF)),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SourceOptionTile extends StatelessWidget {
+  const _SourceOptionTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(22),
+          color: Colors.white.withValues(alpha: 0.05),
+          border: Border.all(color: const Color(0x22FFFFFF)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0x226D63FF),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(icon, color: Colors.white),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: Color(0xCCFFFFFF),
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ErrorCard extends StatelessWidget {
   const _ErrorCard({required this.message});
 
@@ -959,7 +1289,8 @@ class _BoundingBoxPainter extends CustomPainter {
     }
 
     final fittedSizes = applyBoxFit(BoxFit.contain, imageSize, size);
-    final destination = Alignment.center.inscribe(fittedSizes.destination, Offset.zero & size);
+    final destination =
+        Alignment.center.inscribe(fittedSizes.destination, Offset.zero & size);
 
     final scaleX = destination.width / imageSize.width;
     final scaleY = destination.height / imageSize.height;
@@ -980,7 +1311,8 @@ class _BoundingBoxPainter extends CustomPainter {
 
       canvas.drawRect(rect, paint);
 
-      final label = '${detection.label} ${(detection.confidence * 100).toStringAsFixed(0)}%';
+      final label =
+          '${detection.label} ${(detection.confidence * 100).toStringAsFixed(0)}%';
       final paragraphStyle = ui.ParagraphStyle(
         fontSize: 12,
         fontWeight: FontWeight.w700,
@@ -1027,4 +1359,47 @@ class _BoundingBoxPainter extends CustomPainter {
   bool shouldRepaint(covariant _BoundingBoxPainter oldDelegate) {
     return oldDelegate.imageSize != imageSize || oldDelegate.detections != detections;
   }
+}
+
+String _prettifyLabel(String value) {
+  if (value.isEmpty) {
+    return 'Unknown';
+  }
+
+  final normalized = value
+      .replaceAllMapped(
+        RegExp(r'([a-z0-9])([A-Z])'),
+        (match) => '${match.group(1)} ${match.group(2)}',
+      )
+      .replaceAll('_', ' ')
+      .trim();
+
+  if (normalized.isEmpty) {
+    return 'Unknown';
+  }
+
+  return normalized
+      .split(RegExp(r'\s+'))
+      .map((word) {
+        if (word.isEmpty) {
+          return word;
+        }
+        return '${word[0].toUpperCase()}${word.substring(1)}';
+      })
+      .join(' ');
+}
+
+String _normalizeHazardKey(String value) {
+  if (value.isEmpty) {
+    return '';
+  }
+
+  return value
+      .replaceAllMapped(
+        RegExp(r'([a-z0-9])([A-Z])'),
+        (match) => '${match.group(1)}_${match.group(2)}',
+      )
+      .replaceAll(' ', '_')
+      .toLowerCase()
+      .trim();
 }

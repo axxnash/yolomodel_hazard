@@ -10,7 +10,10 @@ found in the LICENSE file. -->
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
 
-    <application android:label="Campus Hazard" android:icon="@mipmap/ic_launcher">
+    <application
+        android:label="Campus Hazard"
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
         <activity android:name="io.flutter.embedding.android.FlutterActivity"
                   android:exported="true"
                   android:theme="@android:style/Theme.Black.NoTitleBar"

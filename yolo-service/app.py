@@ -1,5 +1,6 @@
 from io import BytesIO
 from pathlib import Path
+import sys
 from typing import Dict, List
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -8,7 +9,13 @@ from ultralytics import YOLO
 
 
 BASE_DIR = Path(__file__).resolve().parent
+META_CLASSIFIER_DIR = BASE_DIR.parent / "meta-classifier"
 MAX_IMAGE_DIMENSION = 1280
+
+if str(META_CLASSIFIER_DIR) not in sys.path:
+    sys.path.insert(0, str(META_CLASSIFIER_DIR))
+
+from meta_inference import MetaClassifierPredictor
 
 MODEL_CONFIGS = {
     # Add model1/model3 here after their best.pt and class_names.txt files are ready.
@@ -38,6 +45,7 @@ MODEL_CONFIGS = {
 app = FastAPI(title="Campus Hazard YOLO Service")
 models: Dict[str, YOLO] = {}
 class_names: Dict[str, List[str]] = {}
+meta_classifier: MetaClassifierPredictor | None = None
 
 
 def load_class_names(path: Path, model: YOLO) -> List[str]:
@@ -67,6 +75,8 @@ def load_class_names(path: Path, model: YOLO) -> List[str]:
 
 @app.on_event("startup")
 def startup() -> None:
+    global meta_classifier
+
     for model_id, config in MODEL_CONFIGS.items():
         weights_path = config["weights"]
         if not weights_path.exists():
@@ -75,6 +85,11 @@ def startup() -> None:
         model = YOLO(str(weights_path))
         models[model_id] = model
         class_names[model_id] = load_class_names(config["class_names"], model)
+
+    try:
+        meta_classifier = MetaClassifierPredictor()
+    except FileNotFoundError:
+        meta_classifier = None
 
 
 @app.get("/")
@@ -143,7 +158,15 @@ async def predict_all(file: UploadFile = File(...)) -> dict:
     for model_id in MODEL_CONFIGS:
         detections.extend(predict_with_model(model_id, image))
 
-    return {"detections": detections}
+    response = {"detections": detections}
+
+    if meta_classifier is not None:
+        meta_prediction = meta_classifier.predict(detections)
+        if meta_prediction is not None:
+            response["finalHazard"] = meta_prediction["final_hazard"]
+            response["confidence"] = meta_prediction["meta_confidence"]
+
+    return response
 
 
 @app.post("/predict/{model_id}")

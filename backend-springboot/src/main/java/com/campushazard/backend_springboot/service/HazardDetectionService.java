@@ -38,11 +38,22 @@ public class HazardDetectionService {
             return new HazardResponse("none", 0.0, "None", "No hazard detected.", detections);
         }
 
-        DetectionResult finalDetection = detections.stream()
+        DetectionResult fallbackDetection = detections.stream()
                 .max(Comparator.comparingDouble(DetectionResult::getConfidence))
                 .orElseThrow();
 
-        String label = finalDetection.getLabel();
+        String label = yoloResponse != null && yoloResponse.getFinalHazard() != null && !yoloResponse.getFinalHazard().isBlank()
+                ? yoloResponse.getFinalHazard()
+                : fallbackDetection.getLabel();
+        double confidence = yoloResponse != null && yoloResponse.getConfidence() > 0
+                ? yoloResponse.getConfidence()
+                : fallbackDetection.getConfidence();
+
+        DetectionResult finalDetection = detections.stream()
+                .filter(detection -> label.equals(detection.getLabel()))
+                .max(Comparator.comparingDouble(DetectionResult::getConfidence))
+                .orElse(fallbackDetection);
+
         String severity = severityService.getSeverity(label);
         String ruleBasedRecommendation = recommendationService.getRecommendation(label);
         String recommendation = geminiService.generateRecommendation(finalDetection, severity)
@@ -51,7 +62,7 @@ public class HazardDetectionService {
 
         return new HazardResponse(
                 label,
-                finalDetection.getConfidence(),
+                confidence,
                 severity,
                 recommendation,
                 detections
