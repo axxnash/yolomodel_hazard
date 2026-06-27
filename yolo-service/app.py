@@ -8,6 +8,7 @@ from ultralytics import YOLO
 
 
 BASE_DIR = Path(__file__).resolve().parent
+MAX_IMAGE_DIMENSION = 1280
 
 MODEL_CONFIGS = {
     # Add model1/model3 here after their best.pt and class_names.txt files are ready.
@@ -20,7 +21,18 @@ MODEL_CONFIGS = {
     "model2": {
         "weights": BASE_DIR / "models" / "model2" / "best.pt",
         "class_names": BASE_DIR / "models" / "model2" / "class_names.txt",
+    },
+
+    "model3": {
+        "weights": BASE_DIR / "models" / "model3" / "best.pt",
+        "class_names": BASE_DIR / "models" / "model3" / "class_names.txt",
+    },
+
+    "model4": {
+        "weights": BASE_DIR / "models" / "model4" / "best.pt",
+        "class_names": BASE_DIR / "models" / "model4" / "class_names.txt",
     }
+    
 }
 
 app = FastAPI(title="Campus Hazard YOLO Service")
@@ -79,7 +91,9 @@ async def read_image(file: UploadFile) -> Image.Image:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
     try:
-        return Image.open(BytesIO(contents)).convert("RGB")
+        image = Image.open(BytesIO(contents)).convert("RGB")
+        image.thumbnail((MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION))
+        return image
     except Exception as exc:
         raise HTTPException(status_code=400, detail="Uploaded file must be a valid image.") from exc
 

@@ -43,6 +43,16 @@ env/
 .ipynb_checkpoints/
 
 # =========================
+# Flutter / Dart
+# =========================
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+pubspec.lock
+**/build/
+
+# =========================
 # Dataset / Raw Images
 # Do not upload dataset to GitHub
 # =========================

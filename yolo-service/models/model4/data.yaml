@@ -1,0 +1,10 @@
+path: /content/data
+train: train/images
+val: validation/images
+nc: 5
+names:
+- broken_door_lock
+- damaged_warning_sign
+- mold_damp_wall
+- obstruction_walkway
+- overflowing_trash_bin
