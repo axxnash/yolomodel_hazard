@@ -1,0 +1,5 @@
+01 broken_door_lock
+02 damaged_warning_sign
+03 mold_damp_wall
+04 obstruction_walkway
+05 overflowing_trash_bin
